@@ -1,0 +1,14 @@
+uokichi
+
+multipass avr assembler
+
+goals:
+  support common AVR chips
+
+roadmap:
+  PIC chips
+
+you need:
+  untyped
+
+MIT
