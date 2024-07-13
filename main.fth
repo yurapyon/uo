@@ -1,11 +1,13 @@
 \ note
 \ this code isn't very memory efficient
+\   could use shorter names
+\   not use cells for everything
 
-: advance-here ( ct -- previous-here )
+: make-space ( ct -- previous-here )
   here @ swap allot align ;
 
 : copy, ( addr addr-len -- )
-  advance-here
+  dup make-space
   swap move ;
 
 : save, ( addr addr-len -- new-addr addr-len )
@@ -68,7 +70,7 @@ constant %label
 cell constant argument
 : argument-value 0xffff and ;
 : argument-is-access ^access flag-is-set ;
-: argyment-is-empty  ^empty flag-is-set ;
+: argument-is-empty  ^empty flag-is-set ;
 
 code-object-header
                   \ >code-object-type
@@ -129,55 +131,20 @@ accesses value access-here
 
 : access, ( name-ptr name-len is-absolute -- )
   -rot
-  save
+  save,
   swap a,
   a,
   a,
   0 a, ;
 
 : $a
-  access-count ^access or
+  \ access-count ^access or
   \ todo
   \ word true access,
   ;
 
 : $r
-  access-count ^access or
+  \ access-count ^access or
   \ word false access,
   ;
 
-
-\ to avoid multipass,
-\ labels can resolve past accesses
-\ like 'realtime linking'
-
-\ an access can just tag itself as needing to be resolved
-
-\ how does this handle local/scoped labels? ie for loops
-
-( _
-\ multipass assembler
-
-\ first pass
-\   resolve label accesses
-\     resolve absolute/relative accesses
-
-\ second pass
-\   args will be updated
-\     generate opcodes for each arg
-)
-
-: label ( "name" -- )
-  progmem-here
-  [compile] constant ;
-
-label $this-is-a-label
-
-$this-is-a-label .
-
-100 +to progmem-here
-
-label $this-is-a-label-2
-
-$this-is-a-label .
-$this-is-a-label-2 .

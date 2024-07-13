@@ -5,8 +5,8 @@ multipass avr assembler
 goals:
   support common AVR chips
 
-roadmap:
-  PIC chips
+planned:
+  support PIC chips
 
 you need:
   untyped
