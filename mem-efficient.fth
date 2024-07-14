@@ -24,7 +24,8 @@ char constant etype
 constant %label
 
 \ argument types
-  0 enum %empty
+  0 enum %lit
+    enum %empty
     enum %abs
 constant %rel
 
@@ -35,8 +36,8 @@ etype      \ >type
 constant arg
 
 etype       \ >type
-arg 3 * field >args
    cell field >idef
+arg 3 * field >args
 constant instr
 
 etype      \ >type
@@ -49,54 +50,63 @@ etype      \ >type
   cell field >label-addr
 constant label
 
+0 cell field >access-name
+  cell field >access-len
+  cell field >access-addr
+constant access
+
+0 char field >byte-ct
+  cell field >generator
+constant idef
+
 \ ===
 
-: arg-cell ( type value -- arg-cell )
-  swap 16 lshift or ;
+: to-acell swap 16 lshift or ;
+: from-acell dup 16 rshift swap ;
 
-: is-empty >etype c@ %empty = ;
-: is-abs   >etype c@ %abs = ;
-: is-rel   >etype c@ %rel = ;
+: is-empty >type c@ %empty = ;
+: is-abs   >type c@ %abs = ;
+: is-rel   >type c@ %rel = ;
 
-: mkempty %empty 0 arg-cell ;
-: mkabs  %abs swap arg-cell ;
-: mkrel  %rel swap arg-cell ;
+: mkempty %empty 0 to-acell ;
+: mkabs  %abs swap to-acell ;
+: mkrel  %rel swap to-acell ;
 
 create imem 32 k instr allot
 imem value ihere
 
-: i, ( value -- )
-  ihere !
-  cell +to ihere ;
-
-: ic,
-  ihere c!
-  char +to ihere ;
-
-: iu16,
-  ihere u16!
-  u16 +to ihere ;
+: i, ihere ! cell +to ihere ;
+: ic, ihere c! char +to ihere ;
+: iu16, ihere u16! u16 +to ihere ;
 
 : etype, ic, ;
 
-: arg, ( arg-cell -- )
-  dup 16 rshift etype, iu16, ;
+: arg, from-acell swap iu16, ic, ;
 
-: instr3, ( definition arg arg arg -- )
-  %instr etype,
-  arg, arg, arg, i, ;
+: instr, %instr etype, i, ;
 
-: instr2, mkempty instr3, ;
-: instr1, mkempty instr2, ;
-: instr0, mkempty instr1, ;
+: addr, %addr etype, i, ;
 
-: addr, ( address -- )
-  %addr etype, i, ;
-
-: label,
+: label, ( name len -- )
   save,
-  %label etype,
-  swap i, i, 0 i, ;
+  swap %label etype, i, i, 0 i, ;
+
+create accmem 1 k access * allot
+accmem value acchere
+0 value acc-ct
+
+: acc, acchere ! cell +to acchere ;
+
+: access, ( name len -- access-ct )
+  save,
+  swap acc, acc, 0 acc,
+  acc-ct 1 +to acc-ct ;
+
+: a$ word access, abs, ;
+: r$ word access, rel, ;
+
+\ : addwf, _addwf instr, ;
+\ addwf, 255 arg, word label access, mkabs arg, mkempty arg,
 
 ( x
 
