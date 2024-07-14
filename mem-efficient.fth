@@ -6,8 +6,6 @@
   here @ swap move
   dup mkspc swap ;
 
-: is-set and 0= 0= ;
-
 : k 1024 * ;
 
 : u16 2 chars ;
@@ -15,59 +13,54 @@
 : u16! ( value addr -- )
   over 8 rshift over 1+ c! c! ;
 
-create pmem 32 k u16s allot
-pmem value phere
-
-0x0000 constant pbase
-
-: pw, ( u16 -- )
-  phere u16!
-  u16 +to phere ;
-
 \ ===
 
-0 char field >type
-constant header
+: >type ;
+char constant etype
 
+\ instruction types
   0 enum %instr
     enum %addr
 constant %label
 
-: header i, ;
+\ argument types
+  0 enum %empty
+    enum %abs
+constant %rel
 
 \ ===
 
-  1 flag ^access
-constant ^empty
-
-0 char field >aflags
+etype      \ >type
    u16 field >avalue
 constant arg
 
-: arg-is-access >aflags c@ ^access is-set ;
-: arg-is-empty >aflags c@ ^empty is-set ;
-: arg-cell ( flags value -- arg-cell )
-  swap 16 lshift or ;
-
-: empty-arg
-  ^empty 0 arg-cell ;
-
-header      \ >type
+etype       \ >type
 arg 3 * field >args
    cell field >idef
 constant instr
 
-header     \ >type
+etype      \ >type
   cell field >tag-addr
 constant addr
 
-header     \ >type
+etype      \ >type
   cell field >label-name
   cell field >label-len
   cell field >label-addr
 constant label
 
 \ ===
+
+: arg-cell ( type value -- arg-cell )
+  swap 16 lshift or ;
+
+: is-empty >etype c@ %empty = ;
+: is-abs   >etype c@ %abs = ;
+: is-rel   >etype c@ %rel = ;
+
+: mkempty %empty 0 arg-cell ;
+: mkabs  %abs swap arg-cell ;
+: mkrel  %rel swap arg-cell ;
 
 create imem 32 k instr allot
 imem value ihere
@@ -84,22 +77,37 @@ imem value ihere
   ihere u16!
   u16 +to ihere ;
 
-: arg, ( arg-cell -- )
-  dup 16 rshift ic, iu16, ;
+: etype, ic, ;
 
-: header, ic, ;
+: arg, ( arg-cell -- )
+  dup 16 rshift etype, iu16, ;
 
 : instr3, ( definition arg arg arg -- )
-  %instr header,
+  %instr etype,
   arg, arg, arg, i, ;
 
-: instr2, empty-arg instr3, ;
-: instr1, empty-arg instr2, ;
-: instr0, empty-arg instr1, ;
+: instr2, mkempty instr3, ;
+: instr1, mkempty instr2, ;
+: instr0, mkempty instr1, ;
 
-: addr, %addr header, i, ;
+: addr, ( address -- )
+  %addr etype, i, ;
 
 : label,
   save,
-  %label header,
+  %label etype,
   swap i, i, 0 i, ;
+
+( x
+
+create pmem 32 k u16s allot
+pmem value phere
+
+0x0000 constant pbase
+
+: pw,
+  phere u16!
+  u16 +to phere ;
+
+  )
+
