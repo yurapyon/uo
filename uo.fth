@@ -12,19 +12,29 @@
 : u16s u16 * ;
 : u16! ( value addr -- ) over 8 rshift over 1+ c! c! ;
 
+\ ===
+
 0 cell field >array-mem
   cell field >array-here
 constant array
 
-: <array> 2dup >array-mem ! array-here ! ;
-: adv-array ( array amt -- ) swap >array-here tuck @ + ! ;
-: array, ( cell array -- ) tuck >array-here @ ! cell adv-array ;
-: arrayc, tuck >array-here @ c! char adv-array ;
-: arrayu16, tuck >array-here @ u16! u16 adv-array ;
+: <array> 2dup >array-mem ! >array-here ! ;
+: adv-array >array-here tuck @ +! ;
+\ ( value array -- )
+: array,    tuck >array-here @ !   cell swap adv-array ;
+: arrayc,   tuck >array-here @ c!  char swap adv-array ;
+: arrayu16, tuck >array-here @ u16! u16 swap adv-array ;
+
+: mkarray ( array-size "mem-name" "array-name" -- )
+  create here @ allot
+  create here @ array allot
+  <array> ;
 
 \ ===
 
 32 k constant icount
+1 k constant lcount
+1 k constant acount
 
 \ ===
 
@@ -72,29 +82,63 @@ constant tag
 
 0 value phere
 
-cell constant instr
+0  cell field >idef
+3 arg * field >args
+constant instr
 
-create imem icount instr * allot
-create instrs array allot
-imem instrs <array>
+icount instr * mkarray imem instrs
 
 : i, instrs array, ;
 : ic, instrs arrayc, ;
 : iu16, instrs arrayu16, ;
 
 : arg, from-acell ic, iu16, ;
-: instr, ( generator width -- ) +to phere i, ;
+: iheader, +to phere i, ;
 : @addr to phere ;
 
-create lmem 1 k tag * allot
-create labels array allot
-lmem labels <array>
+lcount tag * mkarray lmem labels
 : label, phere labels tag, ;
 
-create amem 1 k tag * allot
-create accesses array allot
-amem access <array>
+acount tag * mkarray amem accesses
 : access, 0 accesses tag, ;
+
+\ === generators
+
+: :generator
+  word >number unwrap ,
+  word >number unwrap ,
+  [compile] : ;
+
+: >arg-ct cfa> unwrap 2 cell - ;
+: >byte-ct >arg-ct cell + ;
+
+: generator, dup >byte-ct @ iheader, ;
+: consume-args 0 ?do arg, loop ;
+
+: >generator ;
+: >base cell + ;
+
+: idef
+  create , ,
+  does>
+    >generator @
+    dup generator,
+        >arg-ct @ consume-args ;
+
+: idef>stk dup @ swap >base @ ;
+
+: ieval ( instr -- )
+  dup
+  >idef @ idef>stk ( instr generator base )
+  -rot execute ;
+
+:generator 0 2 ~nop drop opc, ;
+
+' ~nop 0x00000000 idef nop,
+' ~nop 0x0000ffff idef nop,
+
+\ :idef 0x0000 1   nop, do-nothing ;
+\ :idef 0xffff 1 reset, do-nothing ;
 
 \ === helpers
 
