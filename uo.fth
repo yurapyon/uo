@@ -10,60 +10,34 @@
 
 : u16 2 chars ;
 : u16s u16 * ;
-: u16! ( value addr -- )
-  over 8 rshift over 1+ c! c! ;
+: u16! ( value addr -- ) over 8 rshift over 1+ c! c! ;
+
+0 cell field >array-mem
+  cell field >array-here
+constant array
+
+: <array> 2dup >array-mem ! array-here ! ;
+: adv-array ( array amt -- ) swap >array-here tuck @ + ! ;
+: array, ( cell array -- ) tuck >array-here @ ! cell adv-array ;
+: arrayc, tuck >array-here @ c! char adv-array ;
+: arrayu16, tuck >array-here @ u16! u16 adv-array ;
 
 \ ===
 
-: >type ;
-char constant etype
+32 k constant icount
 
-\ instruction types
-  0 enum %instr
-    enum %addr
-constant %label
+\ ===
 
-\ argument types
   0 enum %lit
     enum %empty
     enum %abs
 constant %rel
 
-\ ===
-
-etype      \ >type
+0 char field >atype
    u16 field >avalue
 constant arg
 
-etype       \ >type
-   cell field >idef
-arg 3 * field >args
-constant instr
-
-etype      \ >type
-  cell field >tag-addr
-constant addr
-
-etype      \ >type
-  cell field >label-name
-  cell field >label-len
-  cell field >label-addr
-constant label
-
-0 cell field >access-name
-  cell field >access-len
-  cell field >access-addr
-constant access
-
-0 char field >byte-ct
-  cell field >generator
-constant idef
-
-\ ===
-
-: to-acell swap 16 lshift or ;
-: from-acell dup 16 rshift swap ;
-
+: is-lit   >type c@ %lit = ;
 : is-empty >type c@ %empty = ;
 : is-abs   >type c@ %abs = ;
 : is-rel   >type c@ %rel = ;
@@ -72,40 +46,62 @@ constant idef
 : mkabs  %abs swap to-acell ;
 : mkrel  %rel swap to-acell ;
 
-create imem 32 k instr allot
-imem value ihere
+: to-acell swap 16 lshift or ;
+: from-acell dup 16 rshift swap ;
 
-: i, ihere ! cell +to ihere ;
-: ic, ihere c! char +to ihere ;
-: iu16, ihere u16! u16 +to ihere ;
+\ ===
 
-: etype, ic, ;
+0 cell field >tag-name
+  cell field >tag-len
+  cell field >tag-addr
+constant tag
 
-: arg, from-acell swap iu16, ic, ;
-
-: instr, %instr etype, i, ;
-
-: addr, %addr etype, i, ;
-
-: label, ( name len -- )
+: <tag> ( name len addr tag-addr -- )
+  >r
+  r@ >tag-addr !
   save,
-  swap %label etype, i, i, 0 i, ;
+  r@ >tag-len !
+  r> >tag-name ! ;
 
-create accmem 1 k access * allot
-accmem value acchere
-0 value acc-ct
+: tag, ( name len addr tag-array -- )
+  >r
+  r@ >array-here @ <tag>
+  r> tag adv-array ;
 
-: acc, acchere ! cell +to acchere ;
+\ ===
 
-: access, ( name len -- access-ct )
-  save,
-  swap acc, acc, 0 acc,
-  acc-ct 1 +to acc-ct ;
+0 value phere
+
+cell constant instr
+
+create imem icount instr * allot
+create instrs array allot
+imem instrs <array>
+
+: i, instrs array, ;
+: ic, instrs arrayc, ;
+: iu16, instrs arrayu16, ;
+
+: arg, from-acell ic, iu16, ;
+: instr, ( generator width -- ) +to phere i, ;
+: @addr to phere ;
+
+create lmem 1 k tag * allot
+create labels array allot
+lmem labels <array>
+: label, phere labels tag, ;
+
+create amem 1 k tag * allot
+create accesses array allot
+amem access <array>
+: access, 0 accesses tag, ;
+
+\ === helpers
 
 : a$ word access, abs, ;
 : r$ word access, rel, ;
 
-\ : addwf, _addwf instr, ;
+\ : addwf, ['] _addwf 1 instr, ;
 \ addwf, 255 arg, word label access, mkabs arg, mkempty arg,
 
 ( x
