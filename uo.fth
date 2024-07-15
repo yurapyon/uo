@@ -19,6 +19,9 @@
 constant array
 
 : <array> 2dup >array-mem ! >array-here ! ;
+: array>stk dup >array-mem @ swap >array-here @ ;
+: array-size array>stk - ;
+: array-count swap array-size swap / ;
 : adv-array >array-here tuck @ +! ;
 \ ( value array -- )
 : array,    tuck >array-here @ !   cell swap adv-array ;
@@ -86,6 +89,9 @@ constant tag
 3 arg * field >args
 constant instr
 
+: >arg[] ( instr ct -- )
+  arg * swap >args + ;
+
 icount instr * mkarray imem instrs
 
 : i, instrs array, ;
@@ -102,6 +108,10 @@ lcount tag * mkarray lmem labels
 acount tag * mkarray amem accesses
 : access, 0 accesses tag, ;
 
+: resolve-accesses
+  \ todo
+  ;
+
 \ === generators
 
 : :generator
@@ -113,51 +123,71 @@ acount tag * mkarray amem accesses
 : >byte-ct >arg-ct cell + ;
 
 : generator, dup >byte-ct @ iheader, ;
-: consume-args 0 ?do arg, loop ;
+: args, 0 ?do arg, loop ;
 
-: >generator ;
-: >base cell + ;
+0 cell field >generator
+  cell field >base
+constant idef
 
-: idef
+: definstr
   create , ,
   does>
     >generator @
     dup generator,
-        >arg-ct @ consume-args ;
+        >arg-ct @ args, ;
 
-: idef>stk dup @ swap >base @ ;
+: idef>stk dup >generator @ swap >base @ ;
 
 : ieval ( instr -- )
   dup
   >idef @ idef>stk ( instr generator base )
-  -rot execute ;
+  swap execute ;
 
-:generator 0 2 ~nop drop opc, ;
+\ === passes
 
-' ~nop 0x00000000 idef nop,
-' ~nop 0x0000ffff idef nop,
+: pass1
+  \ todo
+  resolve-accesses
+  ;
 
-\ :idef 0x0000 1   nop, do-nothing ;
-\ :idef 0xffff 1 reset, do-nothing ;
+: pass2
+  \ todo check this works
+  instrs >array-here
+  instrs array-count 0 ?do
+    dup ieval
+    dup instr +
+  loop ;
+
+: assemble pass1 pass2 ;
+
+\ ===
+
+32 k u16s mkarray progmem program
+
+: opc, program arrayu16, ;
+
+:generator 0 2 ~base opc, drop ;
+:generator 3 2 ~byte
+  over 0 >arg[]  0x1 and 8 lshift or
+  over 1 >arg[]  0x1 and 9 lshift or
+  swap 2 >arg[] 0xff and          or
+  opc, ;
+:generator 2 2 ~byte-a
+  over 0 >arg[]  0x1 and 8 lshift or
+  swap 1 >arg[] 0xff and          or
+  opc, ;
+:generator 3 2 ~bit
+  over 0 >arg[]  0x7 and 8 lshift or
+  over 1 >arg[]  0x1 and 9 lshift or
+  swap 2 >arg[] 0xff and          or
+  opc, ;
+
+' ~base 0x00000000 definstr nop,
+' ~base 0x0000ffff definstr reset,
 
 \ === helpers
 
 : a$ word access, abs, ;
 : r$ word access, rel, ;
 
-\ : addwf, ['] _addwf 1 instr, ;
 \ addwf, 255 arg, word label access, mkabs arg, mkempty arg,
-
-( x
-
-create pmem 32 k u16s allot
-pmem value phere
-
-0x0000 constant pbase
-
-: pw,
-  phere u16!
-  u16 +to phere ;
-
-  )
-
