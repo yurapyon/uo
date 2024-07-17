@@ -1,3 +1,13 @@
+false value run-tests
+
+: test(
+  run-tests 0= if
+    begin word s" )test" string= until
+  then
+; immediate
+
+: )test ; immediate
+
 : mkspc ( ct -- previous-here )
   here @ swap allot align ;
 
@@ -13,16 +23,16 @@
 : u16! ( value addr -- ) over 8 rshift over 1+ c! c! ;
 : u16@ dup c@ swap 1+ c@ 8 lshift or ;
 
-( _
-: _test
+test(
+:noname
   hex
   here @ . 10 mkspc here @ - . cr
   here @ . s" string" save, type space here @ . cr
   0xdeadbeef here @ u16! here @ u16@ . cr
   decimal
-  bye
   ;
-  )
+execute
+)test
 
 \ ===
 
@@ -45,20 +55,19 @@ constant array
   create here @ array allot
   <array> ;
 
-
-( _
+test(
 8 mkarray _tmem _tarray
 
-: _test
+:noname
   _tmem _tarray .s cr drop drop
   _tarray array>stk .s cr drop drop
   _tarray array>stk .s cr drop drop
   0xdeadbeef _tarray arrayu16,
   _tarray u16 array-ct . cr
   _tarray >array-mem @ 8 u16s dump
-  bye
   ;
-  )
+execute
+)test
 
 \ ===
 
@@ -89,13 +98,13 @@ constant arg
 : mkabs  %abs swap to-acell ;
 : mkrel  %rel swap to-acell ;
 
-( _
-: _test
+test(
+:noname
   mkempty . cr
   0xbeef mkabs dup from-acell .s cr drop drop drop
-  bye
   ;
-  )
+execute
+)test
 
 \ ===
 
@@ -110,7 +119,7 @@ constant tag
 
 : <tag> ( name len addr tag-addr -- )
   >r
-  r@ >tag-addr  !
+  r@ >tag-addr !
   save,
   r@ >tag-len !
   r> >tag-name ! ;
@@ -118,8 +127,8 @@ constant tag
 create t1 tag allot
 create t2 tag allot
 
-( _
-: _test
+test(
+:noname
   s" tag1" 0xdeadbeef t1 <tag>
   s" tag1" 0xbeefdead t2 <tag>
   t1 tag>string type cr
@@ -133,10 +142,9 @@ create t2 tag allot
   t1 >tag-addr @
   t2 >tag-addr @
   .s cr drop drop
-
-  bye
   ;
-  )
+execute
+)test
 
 \ ===
 
@@ -162,21 +170,21 @@ icount instr * mkarray imem instrs
 : @addr to phere ;
 
 lcount tag * mkarray lmem labels
-: label, phere labels tag, ;
-: label-ct labels array-ct ;
-
 acount tag * mkarray amem accesses
-: access, 0 accesses tag, ;
-: access-ct accesses array-ct ;
 
 : tag, ( name len addr tag-array -- )
   >r
   r@ >array-here @ <tag>
   r> tag adv-array ;
-
 \ ( idx array -- )
 : >tag[] >array-mem @ swap tag * + ;
+
+: label, phere labels tag, ;
+: label-ct labels array-ct ;
 : >label[] labels >tag[] ;
+
+: access, 0 accesses tag, ;
+: access-ct accesses array-ct ;
 : >access[] accesses >tag[] ;
 
 \ === resolving
