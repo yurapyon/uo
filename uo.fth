@@ -11,6 +11,7 @@
 : u16 2 chars ;
 : u16s u16 * ;
 : u16! ( value addr -- ) over 8 rshift over 1+ c! c! ;
+: u16@ dup c@ swap 1+ c@ 8 lshift or ;
 
 \ ===
 
@@ -21,7 +22,7 @@ constant array
 : <array> 2dup >array-mem ! >array-here ! ;
 : array>stk dup >array-mem @ swap >array-here @ ;
 : array-size array>stk - ;
-: array-count swap array-size swap / ;
+: array-ct swap array-size swap / ;
 : adv-array >array-here tuck @ +! ;
 \ ( value array -- )
 : array,    tuck >array-here @ !   cell swap adv-array ;
@@ -50,10 +51,10 @@ constant %rel
    u16 field >avalue
 constant arg
 
-: is-lit   >type c@ %lit = ;
-: is-empty >type c@ %empty = ;
-: is-abs   >type c@ %abs = ;
-: is-rel   >type c@ %rel = ;
+: is-lit   >atype c@ %lit = ;
+: is-empty >atype c@ %empty = ;
+: is-abs   >atype c@ %abs = ;
+: is-rel   >atype c@ %rel = ;
 
 : mkempty %empty 0 to-acell ;
 : mkabs  %abs swap to-acell ;
@@ -68,6 +69,10 @@ constant arg
   cell field >tag-len
   cell field >tag-addr
 constant tag
+
+: tag>string dup >tag-len @ swap >tag-name @ ;
+: tag~= tag>string rot tag>string string= ;
+: transfer-addr ( src dest -- ) >tag-addr swap >tag-addr @ swap ! ;
 
 : <tag> ( name len addr tag-addr -- )
   >r
@@ -89,10 +94,12 @@ constant tag
 3 arg * field >args
 constant instr
 
-: >arg[] ( instr ct -- )
+: >arg* ( instr ct -- addr )
   arg * swap >args + ;
 
 icount instr * mkarray imem instrs
+
+: instr-ct instrs instr array-ct ;
 
 : i, instrs array, ;
 : ic, instrs arrayc, ;
@@ -104,12 +111,46 @@ icount instr * mkarray imem instrs
 
 lcount tag * mkarray lmem labels
 : label, phere labels tag, ;
+: label-ct labels array-ct ;
 
 acount tag * mkarray amem accesses
 : access, 0 accesses tag, ;
+: access-ct accesses array-ct ;
+
+\ ( idx array -- )
+: >tag[] array-mem @ swap tag * + ;
+: >label[] labels >tag[] ;
+: >access[] accesses >tag[] ;
+
+\ === resolving
+
+: !access-not-found
+  ." access not found: "
+  tag>string type cr
+  panic ;
+
+: access>label ( access -- label )
+  label-ct 0 ?do
+    i >label[] 2dup tag~=
+    if unloop exit
+    then drop else
+  loop
+  !access-not-found ;
+
+: resolve-access dup access>label transfer-addr ;
 
 : resolve-accesses
-  \ todo
+  access-ct 0 ?do
+    i >access[] resolve-access
+  loop ;
+
+: resolve-arg
+  ;
+
+: resolve-instr
+  ;
+
+: resolve-instrs
   ;
 
 \ === generators
@@ -138,6 +179,7 @@ constant idef
 
 : idef>stk dup >generator @ swap >base @ ;
 
+\ note generators are evaluated with ( instr base )
 : ieval ( instr -- )
   dup
   >idef @ idef>stk ( instr generator base )
@@ -145,22 +187,21 @@ constant idef
 
 \ === passes
 
-: pass1
-  \ todo
-  resolve-accesses
-  ;
+: pass1 resolve-accesses resolve-instrs ;
 
 : pass2
   \ todo check this works
-  instrs >array-here
-  instrs array-count 0 ?do
+  instrs >array-here @
+  instr-ct 0 ?do
     dup ieval
-    dup instr +
+    instr +
   loop ;
 
 : assemble pass1 pass2 ;
 
 \ ===
+
+: >arg[] >arg* >avalue u16@ ;
 
 32 k u16s mkarray progmem program
 
