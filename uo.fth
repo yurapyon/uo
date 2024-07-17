@@ -13,6 +13,17 @@
 : u16! ( value addr -- ) over 8 rshift over 1+ c! c! ;
 : u16@ dup c@ swap 1+ c@ 8 lshift or ;
 
+( _
+: _test
+  hex
+  here @ . 10 mkspc here @ - . cr
+  here @ . s" string" save, type space here @ . cr
+  0xdeadbeef here @ u16! here @ u16@ . cr
+  decimal
+  bye
+  ;
+  )
+
 \ ===
 
 0 cell field >array-mem
@@ -21,18 +32,33 @@ constant array
 
 : <array> 2dup >array-mem ! >array-here ! ;
 : array>stk dup >array-mem @ swap >array-here @ ;
-: array-size array>stk - ;
+: array-size array>stk swap - ;
 : array-ct swap array-size swap / ;
-: adv-array >array-here tuck @ +! ;
+: adv-array swap >array-here +! ;
 \ ( value array -- )
-: array,    tuck >array-here @ !   cell swap adv-array ;
-: arrayc,   tuck >array-here @ c!  char swap adv-array ;
-: arrayu16, tuck >array-here @ u16! u16 swap adv-array ;
+: array,    tuck >array-here @ !   cell adv-array ;
+: arrayc,   tuck >array-here @ c!     1 adv-array ;
+: arrayu16, tuck >array-here @ u16! u16 adv-array ;
 
 : mkarray ( array-size "mem-name" "array-name" -- )
-  create here @ allot
+  create here @ swap allot
   create here @ array allot
   <array> ;
+
+
+( _
+8 mkarray _tmem _tarray
+
+: _test
+  _tmem _tarray .s cr drop drop
+  _tarray array>stk .s cr drop drop
+  _tarray array>stk .s cr drop drop
+  0xdeadbeef _tarray arrayu16,
+  _tarray u16 array-ct . cr
+  _tarray >array-mem @ 8 u16s dump
+  bye
+  ;
+  )
 
 \ ===
 
@@ -47,9 +73,12 @@ constant array
     enum %abs
 constant %rel
 
-0 char field >atype
-   u16 field >avalue
+0   1 field >atype
+  u16 field >avalue
 constant arg
+
+: to-acell swap 16 lshift or ;
+: from-acell dup 16 rshift swap ;
 
 : is-lit   >atype c@ %lit = ;
 : is-empty >atype c@ %empty = ;
@@ -60,8 +89,13 @@ constant arg
 : mkabs  %abs swap to-acell ;
 : mkrel  %rel swap to-acell ;
 
-: to-acell swap 16 lshift or ;
-: from-acell dup 16 rshift swap ;
+( _
+: _test
+  mkempty . cr
+  0xbeef mkabs dup from-acell .s cr drop drop drop
+  bye
+  ;
+  )
 
 \ ===
 
@@ -70,21 +104,39 @@ constant arg
   cell field >tag-addr
 constant tag
 
-: tag>string dup >tag-len @ swap >tag-name @ ;
+: tag>string dup >tag-name @ swap >tag-len @ ;
 : tag~= tag>string rot tag>string string= ;
 : transfer-addr ( src dest -- ) >tag-addr swap >tag-addr @ swap ! ;
 
 : <tag> ( name len addr tag-addr -- )
   >r
-  r@ >tag-addr !
+  r@ >tag-addr  !
   save,
   r@ >tag-len !
   r> >tag-name ! ;
 
-: tag, ( name len addr tag-array -- )
-  >r
-  r@ >array-here @ <tag>
-  r> tag adv-array ;
+create t1 tag allot
+create t2 tag allot
+
+( _
+: _test
+  s" tag1" 0xdeadbeef t1 <tag>
+  s" tag1" 0xbeefdead t2 <tag>
+  t1 tag>string type cr
+  t2 tag>string type cr
+  t1 t2 tag~= . cr
+
+  t1 >tag-addr @
+  t2 >tag-addr @
+  .s cr drop drop
+  t1 t2 transfer-addr
+  t1 >tag-addr @
+  t2 >tag-addr @
+  .s cr drop drop
+
+  bye
+  ;
+  )
 
 \ ===
 
@@ -117,8 +169,13 @@ acount tag * mkarray amem accesses
 : access, 0 accesses tag, ;
 : access-ct accesses array-ct ;
 
+: tag, ( name len addr tag-array -- )
+  >r
+  r@ >array-here @ <tag>
+  r> tag adv-array ;
+
 \ ( idx array -- )
-: >tag[] array-mem @ swap tag * + ;
+: >tag[] >array-mem @ swap tag * + ;
 : >label[] labels >tag[] ;
 : >access[] accesses >tag[] ;
 
@@ -228,7 +285,8 @@ constant idef
 
 \ === helpers
 
-: a$ word access, abs, ;
-: r$ word access, rel, ;
+\ : a$ word access, abs, ;
+\ : r$ word access, rel, ;
 
 \ addwf, 255 arg, word label access, mkabs arg, mkempty arg,
+
