@@ -28,10 +28,8 @@ constant array
   >r
   >array-here dup @
   r> aligned-to swap ! ;
-\ ( value array -- )
-: array,    tuck >array-here @ !   cell adv-array ;
-: arrayc,   tuck >array-here @ c!     1 adv-array ;
-: arrayu16, tuck >array-here @ u16! u16 adv-array ;
+\ ( idx array item-size -- addr )
+: >array[] rot * swap >array-mem @ + ;
 
 : mkarray ( array-size "mem-name" "array-name" -- )
   create here @ swap allot
@@ -55,15 +53,19 @@ constant %rel
   u16 aligned-to
   u16 +field >avalue
 constant arg
-u16 constant arg-align
+
+: <arg> >r
+  r@ >avalue u16!
+  r> >atype c! ;
 
 : to-acell swap 16 lshift or ;
 : from-acell dup 16 rshift swap 0xffff and ;
 
-: is-lit   >atype c@ %lit = ;
-: is-empty >atype c@ %empty = ;
-: is-abs   >atype c@ %abs = ;
-: is-rel   >atype c@ %rel = ;
+: is-lit    >atype c@ %lit = ;
+: is-empty  >atype c@ %empty = ;
+: is-abs    >atype c@ %abs = ;
+: is-rel    >atype c@ %rel = ;
+: is-access dup is-abs swap is-rel or ;
 
 : mklit  %lit swap to-acell ;
 : mkempty %empty 0 to-acell ;
@@ -90,40 +92,39 @@ constant tag
 
 \ ===
 
-0 value phere
-
 0  cell field >idef
 3 arg * field >args
    cell aligned-to
 constant instr
-cell constant instr-align
 
 : >arg[] >args swap arg * + ;
+
+( acell acell acell idef instr -- )
+: <instr> >r
+  r@ >idef !
+  from-acell 0 r@ >arg[] <arg>
+  from-acell 1 r@ >arg[] <arg>
+  from-acell 2 r> >arg[] <arg> ;
 
 icount instr * mkarray imem instrs
 
 : instr-ct instrs instr array-ct ;
+: >instr[] instrs instr >array[] ;
 
-: i, instrs array, ;
-: ic, instrs arrayc, ;
-: iu16, instrs arrayu16, ;
-
-: iheader, +to phere i, ;
-: arg,
-  from-acell swap ic,
-  instrs u16 align-array
-  iu16, ;
-: ifinish, instrs instr-align align-array ;
+: instr,
+  instrs >array-here @ <instr>
+  instrs instr adv-array ;
 
 \ ===
+
+0 value phere
 
 : tag, ( name len addr tag-array -- )
   >r
   r@ >array-here @ <tag>
   r> tag adv-array ;
 
-\ ( idx array -- tag )
-: >tag[] >array-mem @ swap tag * + ;
+: >tag[] tag >array[] ;
 
 lcount tag * mkarray lmem labels
 acount tag * mkarray amem accesses
@@ -160,14 +161,23 @@ acount tag * mkarray amem accesses
     i >access[] resolve-access
   loop ;
 
+: arg>access >avalue u16@ >access[] ;
+
 : resolve-arg
-  ;
+  dup is-access if
+    dup arg>access >tag-addr @ swap >avalue u16!
+  then ;
 
 : resolve-instr
-  ;
+  3 0 ?do
+    i over >arg[] resolve-arg
+  loop
+  drop ;
 
 : resolve-instrs
-  ;
+  instr-ct 0 ?do
+    i >instr[] resolve-instr
+  loop ;
 
 \ === generators
 
@@ -178,11 +188,13 @@ acount tag * mkarray amem accesses
 
 : >arg-ct cfa> unwrap 2 cell - ;
 : >byte-ct >arg-ct cell + ;
+: >genfn ;
 
-: generator, dup >byte-ct @ iheader, ;
-: take-args, 0 ?do arg, loop ;
-: mkempty-args, 0 ?do mkempty arg, loop ;
-: args, >r r@ take-args, r> mkempty-args, ;
+: generator>stk~
+  dup >arg-ct @ swap >byte-ct @ ;
+
+( arg-ct -- ...mkempty )
+: gen-empty-args 3 swap - 0 ?do mkempty loop ;
 
 0 cell field >generator
   cell field >base
@@ -191,9 +203,10 @@ constant idef
 : definstr
   create , ,
   does>
-    >generator @
-    dup generator,
-        >arg-ct @ args, ;
+    dup >r
+      >generator @ generator>stk~
+      +to phere gen-empty-args
+    r> instr, ;
 
 : idef>stk dup >generator @ swap >base @ ;
 
@@ -208,11 +221,8 @@ constant idef
 : pass1 resolve-accesses resolve-instrs ;
 
 : pass2
-  \ todo check this works
-  instrs >array-here @
   instr-ct 0 ?do
-    dup ieval
-    instr +
+    i >instr[] ieval
   loop ;
 
 : assemble pass1 pass2 ;
@@ -223,7 +233,8 @@ constant idef
 
 32 k u16s mkarray progmem program
 
-: opc, program arrayu16, ;
+\ : opc, program arrayu16, ;
+: opc, ;
 
 :generator 0 2 ~base opc, drop ;
 :generator 3 2 ~byte
