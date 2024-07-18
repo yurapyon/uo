@@ -1,13 +1,3 @@
-false value run-tests
-
-: test(
-  run-tests 0= if
-    begin word s" )test" string= until
-  then
-; immediate
-
-: )test ; immediate
-
 : mkspc ( ct -- previous-here )
   here @ swap allot align ;
 
@@ -23,17 +13,6 @@ false value run-tests
 : u16! ( value addr -- ) over 8 rshift over 1+ c! c! ;
 : u16@ dup c@ swap 1+ c@ 8 lshift or ;
 
-test(
-:noname
-  hex
-  here @ . 10 mkspc here @ - . cr
-  here @ . s" string" save, type space here @ . cr
-  0xdeadbeef here @ u16! here @ u16@ . cr
-  decimal
-  ;
-execute
-)test
-
 \ ===
 
 0 cell field >array-mem
@@ -45,6 +24,10 @@ constant array
 : array-size array>stk swap - ;
 : array-ct swap array-size swap / ;
 : adv-array swap >array-here +! ;
+: align-array ( array align -- )
+  >r
+  >array-here dup @
+  r> aligned-to swap ! ;
 \ ( value array -- )
 : array,    tuck >array-here @ !   cell adv-array ;
 : arrayc,   tuck >array-here @ c!     1 adv-array ;
@@ -54,20 +37,6 @@ constant array
   create here @ swap allot
   create here @ array allot
   <array> ;
-
-test(
-8 mkarray _tmem _tarray
-
-:noname
-  _tmem _tarray .s cr drop drop
-  _tarray array>stk .s cr drop drop
-  _tarray array>stk .s cr drop drop
-  0xdeadbeef _tarray arrayu16,
-  _tarray u16 array-ct . cr
-  _tarray >array-mem @ 8 u16s dump
-  ;
-execute
-)test
 
 \ ===
 
@@ -82,29 +51,24 @@ execute
     enum %abs
 constant %rel
 
-0   1 field >atype
-  u16 field >avalue
+0   1 +field >atype
+  u16 aligned-to
+  u16 +field >avalue
 constant arg
+u16 constant arg-align
 
 : to-acell swap 16 lshift or ;
-: from-acell dup 16 rshift swap ;
+: from-acell dup 16 rshift swap 0xffff and ;
 
 : is-lit   >atype c@ %lit = ;
 : is-empty >atype c@ %empty = ;
 : is-abs   >atype c@ %abs = ;
 : is-rel   >atype c@ %rel = ;
 
+: mklit  %lit swap to-acell ;
 : mkempty %empty 0 to-acell ;
 : mkabs  %abs swap to-acell ;
 : mkrel  %rel swap to-acell ;
-
-test(
-:noname
-  mkempty . cr
-  0xbeef mkabs dup from-acell .s cr drop drop drop
-  ;
-execute
-)test
 
 \ ===
 
@@ -124,38 +88,17 @@ constant tag
   r@ >tag-len !
   r> >tag-name ! ;
 
-create t1 tag allot
-create t2 tag allot
-
-test(
-:noname
-  s" tag1" 0xdeadbeef t1 <tag>
-  s" tag1" 0xbeefdead t2 <tag>
-  t1 tag>string type cr
-  t2 tag>string type cr
-  t1 t2 tag~= . cr
-
-  t1 >tag-addr @
-  t2 >tag-addr @
-  .s cr drop drop
-  t1 t2 transfer-addr
-  t1 >tag-addr @
-  t2 >tag-addr @
-  .s cr drop drop
-  ;
-execute
-)test
-
 \ ===
 
 0 value phere
 
 0  cell field >idef
 3 arg * field >args
+   cell aligned-to
 constant instr
+cell constant instr-align
 
-: >arg* ( instr ct -- addr )
-  arg * swap >args + ;
+: >arg[] >args swap arg * + ;
 
 icount instr * mkarray imem instrs
 
@@ -165,42 +108,50 @@ icount instr * mkarray imem instrs
 : ic, instrs arrayc, ;
 : iu16, instrs arrayu16, ;
 
-: arg, from-acell ic, iu16, ;
 : iheader, +to phere i, ;
-: @addr to phere ;
+: arg,
+  from-acell swap ic,
+  instrs u16 align-array
+  iu16, ;
+: ifinish, instrs instr-align align-array ;
 
-lcount tag * mkarray lmem labels
-acount tag * mkarray amem accesses
+\ ===
 
 : tag, ( name len addr tag-array -- )
   >r
   r@ >array-here @ <tag>
   r> tag adv-array ;
-\ ( idx array -- )
+
+\ ( idx array -- tag )
 : >tag[] >array-mem @ swap tag * + ;
 
+lcount tag * mkarray lmem labels
+acount tag * mkarray amem accesses
+
 : label, phere labels tag, ;
-: label-ct labels array-ct ;
+: label-ct labels tag array-ct ;
 : >label[] labels >tag[] ;
 
 : access, 0 accesses tag, ;
-: access-ct accesses array-ct ;
+: access-ct accesses tag array-ct ;
 : >access[] accesses >tag[] ;
 
 \ === resolving
 
 : !access-not-found
-  ." access not found: "
+  ." label not found for access: "
   tag>string type cr
   panic ;
 
-: access>label ( access -- label )
+: unwrap'access>label 0= if !access-not-found then ;
+
+: access>label ( access -- label t/f )
   label-ct 0 ?do
     i >label[] 2dup tag~=
-    if unloop exit
-    then drop else
+    if unloop nip true exit
+    else drop then
   loop
-  !access-not-found ;
+  false ;
 
 : resolve-access dup access>label transfer-addr ;
 
@@ -229,7 +180,9 @@ acount tag * mkarray amem accesses
 : >byte-ct >arg-ct cell + ;
 
 : generator, dup >byte-ct @ iheader, ;
-: args, 0 ?do arg, loop ;
+: take-args, 0 ?do arg, loop ;
+: mkempty-args, 0 ?do mkempty arg, loop ;
+: args, >r r@ take-args, r> mkempty-args, ;
 
 0 cell field >generator
   cell field >base
@@ -266,7 +219,7 @@ constant idef
 
 \ ===
 
-: >arg[] >arg* >avalue u16@ ;
+: >arg[]@ >arg[] >avalue u16@ ;
 
 32 k u16s mkarray progmem program
 
@@ -274,18 +227,18 @@ constant idef
 
 :generator 0 2 ~base opc, drop ;
 :generator 3 2 ~byte
-  over 0 >arg[]  0x1 and 8 lshift or
-  over 1 >arg[]  0x1 and 9 lshift or
-  swap 2 >arg[] 0xff and          or
+  over 0 >arg[]@  0x1 and 8 lshift or
+  over 1 >arg[]@  0x1 and 9 lshift or
+  swap 2 >arg[]@ 0xff and          or
   opc, ;
 :generator 2 2 ~byte-a
-  over 0 >arg[]  0x1 and 8 lshift or
-  swap 1 >arg[] 0xff and          or
+  over 0 >arg[]@  0x1 and 8 lshift or
+  swap 1 >arg[]@ 0xff and          or
   opc, ;
 :generator 3 2 ~bit
-  over 0 >arg[]  0x7 and 8 lshift or
-  over 1 >arg[]  0x1 and 9 lshift or
-  swap 2 >arg[] 0xff and          or
+  over 0 >arg[]@  0x7 and 8 lshift or
+  over 1 >arg[]@  0x1 and 9 lshift or
+  swap 2 >arg[]@ 0xff and          or
   opc, ;
 
 ' ~base 0x00000000 definstr nop,
@@ -297,4 +250,3 @@ constant idef
 \ : r$ word access, rel, ;
 
 \ addwf, 255 arg, word label access, mkabs arg, mkempty arg,
-
