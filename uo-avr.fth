@@ -10,7 +10,7 @@
 
 : u16 2 chars ;
 : u16s u16 * ;
-: u16! ( value addr -- ) over 8 rshift over 1+ c! c! ;
+: u16! over 8 rshift over 1+ c! c! ;
 : u16@ dup c@ swap 1+ c@ 8 lshift or ;
 
 \ ===
@@ -81,7 +81,8 @@ constant tag
 
 : tag>string dup >tag-name @ swap >tag-len @ ;
 : tag~= tag>string rot tag>string string= ;
-: transfer-addr ( src dest -- ) >tag-addr swap >tag-addr @ swap ! ;
+\ ( src dest -- )
+: transfer-addr swap >tag-addr @ swap >tag-addr ! ;
 
 : <tag> ( name len addr tag-addr -- )
   >r

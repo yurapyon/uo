@@ -1,12 +1,17 @@
 uokichi
 
-multipass avr assembler
+multipass PIC/AVR assembler
 
 goals:
-  support common AVR chips
+  more of a 'Forth cross-compiler' or something
+  support common AVR/PIC chips
 
-planned:
-  support PIC chips
+roadmap:
+  planned:
+    PIC18 instruction set
+    output hex files
+  maybe:
+    write directly to chip memory
 
 you need:
   untyped
